@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
 
@@ -297,44 +296,30 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _googleLogin() async {
-    setState(() {
-      _loading = true;
-      _error = '';
-      _message = '';
-    });
+  if (_loading) return;
 
-    try {
-      final value = await authService.startGoogleLogin();
-      final uri = Uri.tryParse(value);
+  setState(() {
+    _loading = true;
+    _error = '';
+    _message = '';
+  });
 
-      if (uri == null ||
-          uri.scheme != 'https' ||
-          uri.host.isEmpty) {
-        throw Exception('The Google sign-in URL is invalid.');
-      }
-
-      if (!await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      )) {
-        throw Exception('Unable to open the browser.');
-      }
-
-      if (mounted) {
-        setState(() {
-          _message = 'Google sign-in page opened.';
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _error = _cleanError(e));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
+  try {
+    await authService.startGoogleLogin();
+  } catch (e) {
+    if (mounted) {
+      setState(() {
+        _error = _cleanError(e);
+      });
+    }
+  } finally {
+    if (mounted) {
+      setState(() {
+        _loading = false;
+      });
     }
   }
+}
 
   Widget _field(
     TextEditingController c,
@@ -1724,14 +1709,315 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = findValue(user, 'displayName') ??
         findValue(user, 'name') ??
-        findValue(user, 'email') ??
         'Prayerlike User';
+
+    final email = findValue(user, 'email') ?? 'No email';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Prayerlike'),
+        title: const Text('PrayLike'),
         backgroundColor: navy,
         automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            tooltip: 'Logout',
+            icon: const Icon(Icons.logout),
+            onPressed: () => _confirmLogout(context),
+          ),
+        ],
+      ),
+      body: Container(
+        width: double.infinity,
+        decoration: prayerGradient(),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: 420,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 12),
+
+                    Center(
+                      child: Image.asset(
+                        'assets/images/pray-logo.png',
+                        width: 110,
+                        height: 110,
+                        errorBuilder: (_, _, _) => const Icon(
+                          Icons.favorite,
+                          size: 80,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    const Text(
+                      'WELCOME TO PRAYLIKE',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: cream,
+                        fontSize: 23,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    const Text(
+                      'Your spiritual journey starts here.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white),
+                    ),
+
+                    const SizedBox(height: 28),
+
+                    // 使用者資訊
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: cream,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'ACCOUNT INFORMATION',
+                            style: TextStyle(
+                              color: gray,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          const Icon(
+                            Icons.account_circle,
+                            color: navy,
+                            size: 42,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            name.toString(),
+                            style: const TextStyle(
+                              color: navy,
+                              fontSize: 21,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            email.toString(),
+                            style: const TextStyle(
+                              color: gray,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    const Text(
+                      'EXPLORE',
+                      style: TextStyle(
+                        color: cream,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    _homeMenu(
+                      context,
+                      icon: Icons.person_outline,
+                      title: 'My Profile',
+                      subtitle: 'View your account profile',
+                    ),
+
+                    _homeMenu(
+                      context,
+                      icon: Icons.auto_awesome,
+                      title: 'My Tribe',
+                      subtitle: 'Explore your spiritual tribe',
+                    ),
+
+                    _homeMenu(
+                      context,
+                      icon: Icons.volunteer_activism,
+                      title: 'Prayer',
+                      subtitle: 'Prayer features',
+                    ),
+
+                    _homeMenu(
+                      context,
+                      icon: Icons.settings_outlined,
+                      title: 'Settings',
+                      subtitle: 'Account and app settings',
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    OutlinedButton.icon(
+                      onPressed: () => _confirmLogout(context),
+                      icon: const Icon(Icons.logout),
+                      label: const Text('LOG OUT'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: navy,
+                        backgroundColor: cream,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 16,
+                        ),
+                        side: BorderSide.none,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 首頁功能選單
+  Widget _homeMenu(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return Card(
+      color: cream,
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 6,
+        ),
+        leading: Icon(icon, color: navy, size: 30),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: navy,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(subtitle),
+        trailing: const Icon(
+          Icons.chevron_right,
+          color: navy,
+        ),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => FeaturePlaceholderPage(
+                title: title,
+                icon: icon,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // 登出確認
+  Future<void> _confirmLogout(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: cream,
+        title: const Text(
+          'Log Out?',
+          style: TextStyle(
+            color: navy,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: const Text(
+          'Are you sure you want to log out of your account?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('CANCEL'),
+          ),
+          ElevatedButton(
+            style: _creamButton(),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('LOG OUT'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      // 清除本機 Cookie
+      await authService.logout();
+
+      if (!context.mounted) return;
+
+      // 清除所有先前頁面，避免返回首頁
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const LoginPage(),
+        ),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Logout failed: ${_cleanError(e)}'),
+        ),
+      );
+    }
+  }
+}
+
+// ==================== 功能佔位頁面 ====================
+
+class FeaturePlaceholderPage extends StatelessWidget {
+  final String title;
+  final IconData icon;
+
+  const FeaturePlaceholderPage({
+    super.key,
+    required this.title,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: navy,
       ),
       body: Container(
         width: double.infinity,
@@ -1740,36 +2026,36 @@ class HomePage extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Image.asset(
-                  'assets/images/pray-logo.png',
-                  width: 120,
-                  height: 120,
+                Icon(
+                  icon,
+                  size: 80,
+                  color: cream,
                 ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Login Successful!',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
+                const SizedBox(height: 20),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: cream,
+                    fontSize: 26,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  'Welcome, $name',
+                const Text(
+                  'This feature is coming soon.',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Colors.white,
-                    fontSize: 18,
+                    fontSize: 16,
                   ),
                 ),
-                const SizedBox(height: 16),
-                const Text(
-                  'You are now on the Prayerlike Flutter home page.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: _creamButton(),
+                  child: const Text('BACK TO HOME'),
                 ),
               ],
             ),

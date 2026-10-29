@@ -1,4 +1,3 @@
-
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
@@ -131,7 +130,12 @@ class AuthService {
     }
   }
 
-  // 5. Google OAuth 登入
+  // 5. 登出：清除本機保存的 Cookie
+  Future<void> logout() async {
+    await apiClient.cookieJar.deleteAll();
+  }
+
+  // 6. Google OAuth 登入
   Future<String> startGoogleLogin() async {
     try {
       final response = await apiClient.dio.post(
