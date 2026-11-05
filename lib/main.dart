@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
@@ -35,7 +36,7 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
-  late final Future<dynamic> _loginCheck;
+  late Future<Map<String, dynamic>?> _loginCheck;
 
   @override
   void initState() {
@@ -43,12 +44,17 @@ class _AuthGateState extends State<AuthGate> {
     _loginCheck = _checkLogin();
   }
 
-  Future<dynamic> _checkLogin() async {
+  Future<Map<String, dynamic>?> _checkLogin() async {
     try {
       return await authService.getMe();
-    } catch (_) {
-      return null;
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 401) return null;
+      rethrow;
     }
+  }
+
+  void _retryLoginCheck() {
+    setState(() => _loginCheck = _checkLogin());
   }
 
   @override
@@ -59,6 +65,27 @@ class _AuthGateState extends State<AuthGate> {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Scaffold(
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('無法確認登入狀態，請檢查網路後重試。'),
+                    const SizedBox(height: 12),
+                    ElevatedButton(
+                      onPressed: _retryLoginCheck,
+                      child: const Text('重試'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           );
         }
 
@@ -2885,8 +2912,17 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       if (!context.mounted) return;
 
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+        (route) => false,
+      );
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Logout failed: ${_cleanError(e)}')),
+        SnackBar(
+          content: Text(
+            'Logged out locally, but server logout failed: ${_cleanError(e)}',
+          ),
+        ),
       );
     }
   }

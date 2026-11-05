@@ -1,5 +1,4 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 
 import 'api_client.dart';
 
@@ -11,12 +10,7 @@ class AuthService {
   // 1. 寄送 Email OTP
   Future<void> requestOtp(String email) async {
     try {
-      await apiClient.dio.post(
-        'v1/auth/otp/request',
-        data: {
-          'email': email,
-        },
-      );
+      await apiClient.dio.post('v1/auth/otp/request', data: {'email': email});
     } on DioException catch (e) {
       throw _apiError('寄送驗證碼失敗', e);
     }
@@ -51,8 +45,7 @@ class AuthService {
       }
 
       final responseData = body['data'];
-      final item =
-          responseData is Map ? responseData['item'] : null;
+      final item = responseData is Map ? responseData['item'] : null;
 
       final result = item is Map ? item : body;
 
@@ -82,10 +75,7 @@ class AuthService {
         data['tribeCode'] = tribeCode;
       }
 
-      final response = await apiClient.dio.post(
-        'v1/auth/register',
-        data: data,
-      );
+      final response = await apiClient.dio.post('v1/auth/register', data: data);
 
       final body = response.data;
 
@@ -94,8 +84,7 @@ class AuthService {
       }
 
       final responseData = body['data'];
-      final item =
-          responseData is Map ? responseData['item'] : null;
+      final item = responseData is Map ? responseData['item'] : null;
 
       final result = item is Map ? item : body;
 
@@ -108,9 +97,7 @@ class AuthService {
   // 4. 查詢目前登入使用者
   Future<Map<String, dynamic>> getMe() async {
     try {
-      final response = await apiClient.dio.get(
-        'v1/auth/me',
-      );
+      final response = await apiClient.dio.get('v1/auth/me');
 
       final body = response.data;
 
@@ -119,20 +106,22 @@ class AuthService {
       }
 
       final responseData = body['data'];
-      final item =
-          responseData is Map ? responseData['item'] : null;
+      final item = responseData is Map ? responseData['item'] : null;
 
-      return Map<String, dynamic>.from(
-        item is Map ? item : body,
-      );
+      return Map<String, dynamic>.from(item is Map ? item : body);
     } on DioException catch (e) {
+      if (e.response?.statusCode == 401) rethrow;
       throw _apiError('查詢登入狀態失敗', e);
     }
   }
 
-  // 5. 登出：清除本機保存的 Cookie
+  // 5. 登出此裝置並清除本機保存的 Cookie
   Future<void> logout() async {
-    await apiClient.cookieJar.deleteAll();
+    try {
+      await apiClient.logoutSession();
+    } finally {
+      await apiClient.cookieJar.deleteAll();
+    }
   }
 
   // 6. Google OAuth 登入
@@ -140,9 +129,7 @@ class AuthService {
     try {
       final response = await apiClient.dio.post(
         'v1/auth/oauth/google/start',
-        data: {
-          'client': 'app',
-        },
+        data: {'client': 'app'},
       );
 
       final body = response.data;
@@ -152,14 +139,11 @@ class AuthService {
       }
 
       final responseData = body['data'];
-      final item =
-          responseData is Map ? responseData['item'] : null;
+      final item = responseData is Map ? responseData['item'] : null;
 
-      final authorizationUrl =
-          item is Map ? item['authorizationUrl'] : null;
+      final authorizationUrl = item is Map ? item['authorizationUrl'] : null;
 
-      if (authorizationUrl is! String ||
-          authorizationUrl.isEmpty) {
+      if (authorizationUrl is! String || authorizationUrl.isEmpty) {
         throw Exception('伺服器沒有提供 Google 授權網址');
       }
 
@@ -174,18 +158,12 @@ class AuthService {
     final statusCode = e.response?.statusCode;
     final body = e.response?.data;
 
-    debugPrint('$action：${e.requestOptions.uri}');
-    debugPrint('HTTP 狀態碼：$statusCode');
-    debugPrint('伺服器回應：$body');
-
     if (body is Map) {
       final code = body['code'];
       final message = body['message'];
 
       if (code == 'OAUTH_PROVIDER_DISABLED') {
-        return Exception(
-          '測試環境尚未啟用 Google 登入，請聯絡後端管理員',
-        );
+        return Exception('測試環境尚未啟用 Google 登入，請聯絡後端管理員');
       }
 
       if (message != null) {
@@ -211,9 +189,7 @@ class AuthService {
         return Exception('伺服器 HTTPS 憑證驗證失敗');
 
       default:
-        return Exception(
-          '$action：${e.message ?? e.type.name}',
-        );
+        return Exception('$action：${e.message ?? e.type.name}');
     }
   }
 }
