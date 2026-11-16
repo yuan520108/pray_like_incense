@@ -11,16 +11,23 @@ class AuthService {
   // 1. 寄送 Email OTP
   Future<void> requestOtp(String email) async {
     try {
-      await apiClient.dio.post(
-        'v1/auth/otp/request',
-        data: {
-          'email': email,
-        },
-      );
-    } on DioException catch (e) {
-      throw _apiError('寄送驗證碼失敗', e);
+        await apiClient.dio.post(
+          'v1/auth/otp/request',
+          data: {
+            'email': email,
+          },
+          options: Options(
+            headers: {
+              'X-Requested-With': 'XMLHttpRequest',
+              'Referer': 'https://testpray.54ucl.com/',
+              'Origin': 'https://testpray.54ucl.com',
+            },
+          ),
+        );
+      } on DioException catch (e) {
+        throw _apiError('寄送驗證碼失敗', e);
+      }
     }
-  }
 
   // 2. 驗證 OTP
   Future<Map<String, dynamic>> verifyOtp({
@@ -42,6 +49,13 @@ class AuthService {
       final response = await apiClient.dio.post(
         'v1/auth/otp/verify',
         data: data,
+        options: Options(
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': 'https://testpray.54ucl.com/',
+            'Origin': 'https://testpray.54ucl.com',
+          },
+        ),
       );
 
       final body = response.data;
@@ -85,6 +99,13 @@ class AuthService {
       final response = await apiClient.dio.post(
         'v1/auth/register',
         data: data,
+        options: Options(
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': 'https://testpray.54ucl.com/',
+            'Origin': 'https://testpray.54ucl.com',
+          },
+        ),
       );
 
       final body = response.data;
@@ -110,6 +131,13 @@ class AuthService {
     try {
       final response = await apiClient.dio.get(
         'v1/auth/me',
+        options: Options(
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': 'https://testpray.54ucl.com/',
+            'Origin': 'https://testpray.54ucl.com',
+          },
+        ),
       );
 
       final body = response.data;
@@ -143,6 +171,13 @@ class AuthService {
         data: {
           'client': 'app',
         },
+        options: Options(
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': 'https://testpray.54ucl.com/',
+            'Origin': 'https://testpray.54ucl.com',
+          },
+        ),
       );
 
       final body = response.data;

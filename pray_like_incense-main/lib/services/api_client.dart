@@ -41,6 +41,19 @@ class ApiClient {
       CookieManager(client.cookieJar),
     );
 
+    // 添加通用的拦截器来处理CSRF相关的请求头
+    client.dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) {
+        // 为所有POST/PUT/DELETE请求添加常见的CSRF相关头
+        if (options.method == 'POST' || options.method == 'PUT' || options.method == 'DELETE') {
+          options.headers['X-Requested-With'] = 'XMLHttpRequest';
+          options.headers['Referer'] = 'https://testpray.54ucl.com/';
+          options.headers['Origin'] = 'https://testpray.54ucl.com';
+        }
+        return handler.next(options);
+      },
+    ));
+
     // 顯示實際請求網址與錯誤，方便除錯
     client.dio.interceptors.add(
       LogInterceptor(
