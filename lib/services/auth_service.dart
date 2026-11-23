@@ -2,6 +2,13 @@ import 'package:dio/dio.dart';
 
 import 'api_client.dart';
 
+class UnauthenticatedException implements Exception {
+  const UnauthenticatedException();
+
+  @override
+  String toString() => 'Your session has expired. Please sign in again.';
+}
+
 class AuthService {
   final ApiClient apiClient;
 
@@ -10,9 +17,20 @@ class AuthService {
   // 1. 寄送 Email OTP
   Future<void> requestOtp(String email) async {
     try {
-      await apiClient.dio.post('v1/auth/otp/request', data: {'email': email});
+      await apiClient.dio.post(
+        'v1/auth/otp/request',
+        data: {'email': email},
+        options: Options(
+          receiveTimeout: const Duration(seconds: 60),
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': 'https://testpray.54ucl.com/',
+            'Origin': 'https://testpray.54ucl.com',
+          },
+        ),
+      );
     } on DioException catch (e) {
-      throw _apiError('寄送驗證碼失敗', e);
+      throw _apiError('Failed to send verification code', e);
     }
   }
 
@@ -36,12 +54,19 @@ class AuthService {
       final response = await apiClient.dio.post(
         'v1/auth/otp/verify',
         data: data,
+        options: Options(
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': 'https://testpray.54ucl.com/',
+            'Origin': 'https://testpray.54ucl.com',
+          },
+        ),
       );
 
       final body = response.data;
 
       if (body is! Map) {
-        throw Exception('驗證 API 回傳格式不正確');
+        throw Exception('The verification API returned an invalid response.');
       }
 
       final responseData = body['data'];
@@ -51,7 +76,7 @@ class AuthService {
 
       return Map<String, dynamic>.from(result);
     } on DioException catch (e) {
-      throw _apiError('驗證碼確認失敗', e);
+      throw _apiError('Failed to verify code', e);
     }
   }
 
@@ -75,12 +100,22 @@ class AuthService {
         data['tribeCode'] = tribeCode;
       }
 
-      final response = await apiClient.dio.post('v1/auth/register', data: data);
+      final response = await apiClient.dio.post(
+        'v1/auth/register',
+        data: data,
+        options: Options(
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': 'https://testpray.54ucl.com/',
+            'Origin': 'https://testpray.54ucl.com',
+          },
+        ),
+      );
 
       final body = response.data;
 
       if (body is! Map) {
-        throw Exception('註冊 API 回傳格式不正確');
+        throw Exception('The registration API returned an invalid response.');
       }
 
       final responseData = body['data'];
@@ -90,19 +125,28 @@ class AuthService {
 
       return Map<String, dynamic>.from(result);
     } on DioException catch (e) {
-      throw _apiError('註冊失敗', e);
+      throw _apiError('Registration failed', e);
     }
   }
 
   // 4. 查詢目前登入使用者
   Future<Map<String, dynamic>> getMe() async {
     try {
-      final response = await apiClient.dio.get('v1/auth/me');
+      final response = await apiClient.dio.get(
+        'v1/auth/me',
+        options: Options(
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': 'https://testpray.54ucl.com/',
+            'Origin': 'https://testpray.54ucl.com',
+          },
+        ),
+      );
 
       final body = response.data;
 
       if (body is! Map) {
-        throw Exception('登入狀態回傳格式不正確');
+        throw Exception('The sign-in status response has an invalid format.');
       }
 
       final responseData = body['data'];
@@ -110,18 +154,24 @@ class AuthService {
 
       return Map<String, dynamic>.from(item is Map ? item : body);
     } on DioException catch (e) {
-      if (e.response?.statusCode == 401) rethrow;
-      throw _apiError('查詢登入狀態失敗', e);
+      final body = e.response?.data;
+      if (e.response?.statusCode == 401 ||
+          (body is Map && body['code'] == 'AUTHENTICATION_REQUIRED')) {
+        throw const UnauthenticatedException();
+      }
+      throw _apiError('Failed to check sign-in status', e);
     }
   }
 
-  // 5. 登出此裝置並清除本機保存的 Cookie
+  // 5. 登出並清除本機保存的 Cookie
   Future<void> logout() async {
     try {
-      await apiClient.logoutSession();
-    } finally {
+      await apiClient.dio.post('v1/auth/logout', data: <String, dynamic>{});
+    } on DioException catch (error) {
       await apiClient.cookieJar.deleteAll();
+      throw _apiError('Sign-out failed', error);
     }
+    await apiClient.cookieJar.deleteAll();
   }
 
   // 6. Google OAuth 登入
@@ -130,12 +180,19 @@ class AuthService {
       final response = await apiClient.dio.post(
         'v1/auth/oauth/google/start',
         data: {'client': 'app'},
+        options: Options(
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Referer': 'https://testpray.54ucl.com/',
+            'Origin': 'https://testpray.54ucl.com',
+          },
+        ),
       );
 
       final body = response.data;
 
       if (body is! Map) {
-        throw Exception('伺服器回傳格式不正確');
+        throw Exception('The server returned an invalid response.');
       }
 
       final responseData = body['data'];
@@ -144,12 +201,14 @@ class AuthService {
       final authorizationUrl = item is Map ? item['authorizationUrl'] : null;
 
       if (authorizationUrl is! String || authorizationUrl.isEmpty) {
-        throw Exception('伺服器沒有提供 Google 授權網址');
+        throw Exception(
+          'The server did not provide a Google authorization URL.',
+        );
       }
 
       return authorizationUrl;
     } on DioException catch (e) {
-      throw _apiError('Google 登入失敗', e);
+      throw _apiError('Google sign-in failed', e);
     }
   }
 
@@ -163,7 +222,9 @@ class AuthService {
       final message = body['message'];
 
       if (code == 'OAUTH_PROVIDER_DISABLED') {
-        return Exception('測試環境尚未啟用 Google 登入，請聯絡後端管理員');
+        return Exception(
+          'Google sign-in is not enabled in the test environment. Contact the API administrator.',
+        );
       }
 
       if (message != null) {
@@ -177,16 +238,20 @@ class AuthService {
 
     switch (e.type) {
       case DioExceptionType.connectionTimeout:
-        return Exception('連線逾時，請檢查伺服器是否可連線');
+        return Exception(
+          'Connection timed out. Check that the server is available.',
+        );
 
       case DioExceptionType.receiveTimeout:
-        return Exception('伺服器回應逾時');
+        return Exception('The server response timed out.');
 
       case DioExceptionType.connectionError:
-        return Exception('無法建立網路連線，請檢查網路及伺服器');
+        return Exception(
+          'Could not connect. Check your network and the server.',
+        );
 
       case DioExceptionType.badCertificate:
-        return Exception('伺服器 HTTPS 憑證驗證失敗');
+        return Exception('The server HTTPS certificate could not be verified.');
 
       default:
         return Exception('$action：${e.message ?? e.type.name}');
