@@ -5,6 +5,8 @@ import '../core/app_theme.dart';
 import '../models/prayer_post.dart';
 import '../pages/friend_search_page.dart';
 import '../pages/notification_page.dart';
+import '../pages/profile_page.dart';
+import '../pages/tribe_page.dart';
 import '../pages/ycoin_transactions_page.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
@@ -12,12 +14,14 @@ import '../services/friends_service.dart';
 import '../services/media_service.dart';
 import '../services/notifications_service.dart';
 import '../services/posts_service.dart' as posts;
+import '../services/profile_service.dart';
 import '../services/witness_service.dart';
 import '../services/ycoin_service.dart';
 import '../widgets/app_bottom_navigation_bar.dart';
 import '../widgets/comments_sheet.dart';
 import '../widgets/post_card.dart';
 import '../widgets/post_edit_form.dart';
+import '../widgets/prayer_composer.dart';
 import '../widgets/witness_composer_sheet.dart';
 import '../widgets/ycoin_display.dart';
 
@@ -82,6 +86,9 @@ class _HomePageState extends State<HomePage> {
   );
 
   _FeedTab _feedTab = _FeedTab.posts;
+  late final ProfileService _profileService = ProfileService(
+    widget.apiClient.dio,
+  );
   String? _selectedCategory = _categories.first;
   String _postCategory = _categories.first;
   String _postPrivacy = 'public';
@@ -297,9 +304,8 @@ class _HomePageState extends State<HomePage> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _yCoinBalance = null);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.toString())));
     }
   }
 
@@ -355,15 +361,15 @@ class _HomePageState extends State<HomePage> {
     return result;
   }
 
-  Future<void> _publishPost() async {
+  Future<bool> _publishPost() async {
     final content = _contentController.text.trim();
     if (content.isEmpty) {
       _showMessage('Please enter post content.');
-      return;
+      return false;
     }
     if (content.length > 500) {
       _showMessage('Post content cannot exceed 500 characters.');
-      return;
+      return false;
     }
 
     setState(() => _isSubmittingPost = true);
@@ -376,7 +382,7 @@ class _HomePageState extends State<HomePage> {
         category: _postCategory,
         privacy: _postPrivacy,
       );
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _feedRequestToken++;
         _createMode = null;
@@ -396,11 +402,58 @@ class _HomePageState extends State<HomePage> {
       });
       await Future.wait([_loadYCoinBalance(), _loadFeed(refresh: true)]);
       _showMessage('Post published.');
+      return true;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() => _isSubmittingPost = false);
       _showError(error);
+      return false;
     }
+  }
+
+  Future<void> _openProfile() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            ProfilePage(user: widget.user, profileService: _profileService),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _openTribe() async {
+    final code = await Navigator.of(context).push<int>(
+      MaterialPageRoute<int>(
+        builder: (_) => TribePage(
+          selectedTribeCode: _tribeCode,
+          profileService: _profileService,
+        ),
+      ),
+    );
+    if (!mounted || code == null) return;
+    setState(() {
+      widget.user['tribe'] = code;
+      widget.user['tribeCode'] = code;
+    });
+    await _loadFeed(refresh: true);
+  }
+
+  Future<void> _openComposer() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => PrayerComposer(
+          hasTribe: _tribeCode != null,
+          onNavigate: _onNavigationSelected,
+          onPublish: (draft) async {
+            _titleController.text = draft.title;
+            _contentController.text = draft.content;
+            _postCategory = draft.category;
+            _postPrivacy = draft.privacy;
+            return _publishPost();
+          },
+        ),
+      ),
+    );
   }
 
   void _onNavigationSelected(int index) {
@@ -414,10 +467,7 @@ class _HomePageState extends State<HomePage> {
         _changeFeedTab(_FeedTab.witnesses);
         break;
       case 2:
-        setState(() {
-          _selectedIndex = 2;
-          _createMode = 'post';
-        });
+        _openComposer();
         break;
       case 3:
         setState(() {
@@ -433,16 +483,14 @@ class _HomePageState extends State<HomePage> {
 
   void _showError(Object error) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(error.toString())));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(error.toString())));
   }
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -524,7 +572,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildHomeHeader() {
-    final avatar = widget.user['avatar_url'] ?? widget.user['avatar'];
+    final avatar =
+        widget.user['avatarUrl'] ??
+        widget.user['avatar_url'] ??
+        widget.user['avatar'];
     final avatarUrl = avatar is String && avatar.isNotEmpty
         ? _resolveMediaUrl(avatar)
         : null;
@@ -538,57 +589,60 @@ class _HomePageState extends State<HomePage> {
           Row(
             children: [
               Expanded(
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      padding: const EdgeInsets.all(2),
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                      child: CircleAvatar(
-                        backgroundColor: const Color(0xFF667EEA),
-                        backgroundImage: avatarUrl == null
-                            ? null
-                            : NetworkImage(avatarUrl),
-                        child: avatarUrl == null
-                            ? const Icon(Icons.person, color: Colors.white)
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
+                child: GestureDetector(
+                  onTap: _openProfile,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        padding: const EdgeInsets.all(2),
+                        decoration: const BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(18),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Colors.black26,
-                              blurRadius: 6,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
+                          shape: BoxShape.circle,
                         ),
-                        child: Text(
-                          _displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.black,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
+                        child: CircleAvatar(
+                          backgroundColor: const Color(0xFF667EEA),
+                          backgroundImage: avatarUrl == null
+                              ? null
+                              : NetworkImage(avatarUrl),
+                          child: avatarUrl == null
+                              ? const Icon(Icons.person, color: Colors.white)
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 6,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            _displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -604,44 +658,47 @@ class _HomePageState extends State<HomePage> {
           Row(
             children: [
               Expanded(
-                child: Row(
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: tribeIconPath == null
-                            ? const Color(0xFFD9D9D9)
-                            : Colors.transparent,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFF8B6F47),
-                          width: 2,
+                child: GestureDetector(
+                  onTap: _openTribe,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: tribeIconPath == null
+                              ? const Color(0xFFD9D9D9)
+                              : Colors.transparent,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFF8B6F47),
+                            width: 2,
+                          ),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: tribeIconPath == null
+                            ? null
+                            : Image.asset(tribeIconPath, fit: BoxFit.cover),
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          _tribeName.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1,
+                            shadows: [
+                              Shadow(color: Colors.black38, blurRadius: 4),
+                            ],
+                          ),
                         ),
                       ),
-                      clipBehavior: Clip.antiAlias,
-                      child: tribeIconPath == null
-                          ? null
-                          : Image.asset(tribeIconPath, fit: BoxFit.cover),
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        _tribeName.toUpperCase(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1,
-                          shadows: [
-                            Shadow(color: Colors.black38, blurRadius: 4),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               _buildHeaderAction(
