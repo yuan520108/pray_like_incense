@@ -1,24 +1,31 @@
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+
+import 'browser_credentials_stub.dart'
+    if (dart.library.js_interop) 'browser_credentials_web.dart';
 
 class ApiClient {
   static const String baseUrl = 'https://testpray.54ucl.com/api/';
 
   late final Dio dio;
-  late final PersistCookieJar cookieJar;
+  late final CookieJar cookieJar;
 
   ApiClient._();
 
   static Future<ApiClient> create() async {
     final client = ApiClient._();
 
-    final appDirectory = await getApplicationSupportDirectory();
-
-    client.cookieJar = PersistCookieJar(
-      storage: FileStorage('${appDirectory.path}/api_cookies/'),
-    );
+    if (kIsWeb) {
+      client.cookieJar = CookieJar();
+    } else {
+      final appDirectory = await getApplicationSupportDirectory();
+      client.cookieJar = PersistCookieJar(
+        storage: FileStorage('${appDirectory.path}/api_cookies/'),
+      );
+    }
 
     client.dio = Dio(
       BaseOptions(
@@ -33,7 +40,11 @@ class ApiClient {
       ),
     );
 
-    client.dio.interceptors.add(CookieManager(client.cookieJar));
+    if (kIsWeb) {
+      configureBrowserCredentials(client.dio);
+    } else {
+      client.dio.interceptors.add(CookieManager(client.cookieJar));
+    }
 
     // 添加通用的拦截器来处理CSRF相关的请求头
     client.dio.interceptors.add(
